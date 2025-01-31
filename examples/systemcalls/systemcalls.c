@@ -72,17 +72,12 @@ bool do_exec(int count, ...)
     if (pid < 0) 
     {
         // Fork failed
-        perror("fork failed");
         return false;
     } 
     else if (pid == 0) 
     {
         // Child process
-        // Debugging: Print the command before executing
-        fprintf(stderr, "Executing: %s\n", command[0]);
-
         execv(command[0], command);
-        perror("execv failed");  // If execv fails, this should print the error message
         exit(-1);
     }
 
@@ -91,7 +86,6 @@ bool do_exec(int count, ...)
 
     if (waitpid(pid, &status, 0) == -1) 
     {
-        perror("waitpid failed");
         return false;
     }
 
