@@ -1,7 +1,12 @@
-all: writer
+CC ?= gcc
+CFLAGS = -g -Wall
+TARGET = writer
 
-writer: writer.c
-	$(CC) -g -Wall -o writer writer.c
+default: all
+all: $(TARGET)
+
+$(TARGET): $(TARGET).c
+	$(CC) -g -Wall -o $(TARGET) $(TARGET).c
 
 clean:
-	rm -f writer *.o
+	rm -f $(TARGET) *.o
