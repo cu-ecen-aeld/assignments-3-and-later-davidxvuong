@@ -16,6 +16,7 @@
 #define BUFFER_SIZE 1024
 #define BACKLOG 10
 #define FILE "/var/tmp/aesdsocketdata"
+#define ARGS "d"
 
 int file_fd = 0;
 int sock_fd = 0;
@@ -110,8 +111,10 @@ void handle_client(int client_fd, int file_fd)
     }
 }
 
-int main()
+int main(int argc, char **argv)
 {
+    int daemon_mode = 0;
+    int o = 0;
     int rc = 0;
     int opt = 1;
     struct addrinfo hints = {0};
@@ -120,8 +123,21 @@ int main()
     socklen_t client_addr_len = sizeof(client_addr);
     char *client_ip = NULL;
     struct sigaction a = {0};
+    pid_t pid;
 
     openlog(NULL, 0, LOG_USER);
+
+    while ((o = getopt(argc, argv, ARGS)) != -1)
+    {
+        switch (o)
+        {
+            case 'd':
+                daemon_mode = 1;
+                break;
+            default:
+                break;
+        }
+    }
 
     // Setup signal handler
     a.sa_handler = signal_handler;
@@ -180,6 +196,21 @@ int main()
     {
         syslog(LOG_ERR, "bind error - %s", strerror(errno));
         goto close_sock;
+    }
+
+    if (daemon_mode)
+    {
+        pid = fork();
+        if (pid < 0)
+        {
+            syslog(LOG_ERR, "fork failed - %s", strerror(errno));
+            goto close_sock;
+        }
+        if (pid > 0)
+        {
+            // Parent process
+            return 0;
+        }
     }
 
     // Listen for incoming connections
