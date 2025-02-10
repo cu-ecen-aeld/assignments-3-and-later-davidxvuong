@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <signal.h>
 #include <errno.h>
 #include <string.h>
 #include <syslog.h>
@@ -14,6 +16,23 @@
 #define BUFFER_SIZE 1024
 #define BACKLOG 10
 #define FILE "/var/tmp/aesdsocketdata"
+
+int file_fd = 0;
+int sock_fd = 0;
+int client_fd = 0;
+
+void signal_handler(int s)
+{
+    if (s == SIGINT || s == SIGTERM)
+    {
+        syslog(LOG_DEBUG, "Caught signal, exiting");
+        close(client_fd);
+        close(sock_fd);
+        close(file_fd);
+        remove(FILE);
+        exit(0);
+    }
+}
 
 /*
 * This function will handle the communication between the client. It will:
@@ -94,17 +113,29 @@ void handle_client(int client_fd, int file_fd)
 int main()
 {
     int rc = 0;
-    int file_fd = 0;
-    int sock_fd = 0;
-    int client_fd = 0;
     int opt = 1;
     struct addrinfo hints = {0};
     struct addrinfo *res = NULL;
     struct sockaddr_in client_addr = {0};
     socklen_t client_addr_len = sizeof(client_addr);
     char *client_ip = NULL;
+    struct sigaction a = {0};
 
     openlog(NULL, 0, LOG_USER);
+
+    // Setup signal handler
+    a.sa_handler = signal_handler;
+    if (sigaction(SIGTERM, &a, NULL) != 0)
+    {
+        syslog(LOG_ERR, "Failed to register signal handler for SIGTERM - %s", strerror(errno));
+        return -1;
+    }
+
+    if (sigaction(SIGINT, &a, NULL) != 0)
+    {
+        syslog(LOG_ERR, "Failed to register signal handler for SIGINT - %s", strerror(errno));
+        return -1;
+    }
 
     // Open file for storing packet data
     file_fd = open(FILE, O_CREAT | O_RDWR | O_APPEND, 0644);
@@ -159,6 +190,9 @@ int main()
         goto close_sock;
     }
 
+    // We don't need res anymore
+    freeaddrinfo(res);
+
     // Server loop
     while (true)
     {
@@ -181,7 +215,7 @@ int main()
 close_sock:
     close(sock_fd);
 free_addr_info:
-    freeaddrinfo(res);
+    if (res) freeaddrinfo(res);
 close_file:
     close(file_fd);
     remove(FILE);
