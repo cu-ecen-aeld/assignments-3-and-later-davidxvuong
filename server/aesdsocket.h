@@ -9,11 +9,13 @@
 #define BACKLOG 10
 #define FILE "/var/tmp/aesdsocketdata"
 
-struct thread_data {
-    pthread_mutex_t file_mutex;
+typedef struct {
+    pthread_mutex_t *file_mutex;
     int file_fd;
-    int sock_fd;
     int client_fd;
+    char *client_ip;
+    pthread_t tid;
+    bool thread_complete_success;
 } thread_data_t;
 
 #endif

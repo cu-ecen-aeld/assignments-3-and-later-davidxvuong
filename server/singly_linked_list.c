@@ -2,6 +2,9 @@
 
 singly_linked_list_t *sll_init_list() {
     singly_linked_list_t *list = malloc(sizeof(singly_linked_list_t));
+    if (!list)
+        return NULL;
+
     list->size = 0;
     list->head = NULL;
     list->tail = NULL;
@@ -10,6 +13,9 @@ singly_linked_list_t *sll_init_list() {
 }
 
 void sll_destroy_list(singly_linked_list_t *list) {
+    if (!list)
+        return;
+
     if (list->size == 0) {
         free(list);
         return;
@@ -29,6 +35,10 @@ void sll_destroy_list(singly_linked_list_t *list) {
 }
 
 void sll_insert_node(singly_linked_list_t *list, void *data) {
+    if (!list || !data)
+        return;
+
+
     node_t *node = malloc(sizeof(node_t));
     node->value = data;
     node->next = NULL;
@@ -46,6 +56,11 @@ void sll_insert_node(singly_linked_list_t *list, void *data) {
 }
 
 int sll_remove_node(singly_linked_list_t *list, void *data) {
+    if (!list || !data)
+    {
+        return -1;
+    }
+
     int count = 0;
     node_t *cur_ptr = list->head;
     node_t *next_ptr;
@@ -89,6 +104,11 @@ int sll_remove_node(singly_linked_list_t *list, void *data) {
 }
 
 void *sll_remove_top(singly_linked_list_t *list) {
+    if (!list)
+    {
+        return NULL;
+    }
+
     if (list->head == NULL) {
         return NULL;
     }
@@ -106,6 +126,9 @@ void *sll_remove_top(singly_linked_list_t *list) {
 }
 
 void sll_reverse_list(singly_linked_list_t *list) {
+    if (!list)
+        return;
+
     node_t *prev_ptr = NULL;
     node_t *cur_ptr = list->head;
     node_t *next_ptr = cur_ptr->next;
@@ -123,18 +146,25 @@ void sll_reverse_list(singly_linked_list_t *list) {
 }
 
 int sll_size(singly_linked_list_t *list) {
+    if (!list) return -1;
     return (list->size);
 }
 
 void *sll_front(singly_linked_list_t *list) {
+    if (!list) return NULL;
+    if (!list->head) return NULL;
     return (list->head->value);
 }
 
 void *sll_back(singly_linked_list_t *list) {
+    if (!list) return NULL;
+    if (!list->tail) return NULL;
     return (list->tail->value);
 }
 
 void sll_pretty_print_list(singly_linked_list_t *list) {
+    if (!list) return;
+
     node_t *ptr = list->head;
     int count = 0;
 

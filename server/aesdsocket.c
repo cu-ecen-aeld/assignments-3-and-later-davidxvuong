@@ -12,21 +12,24 @@
 #include <arpa/inet.h>
 #include <stdbool.h>
 
-#define PORT "9000"
-#define BUFFER_SIZE 1024
-#define BACKLOG 10
-#define FILE "/var/tmp/aesdsocketdata"
+#include "aesdsocket.h"
+#include "singly_linked_list.h"
+
 #define ARGS "d"
 
 int file_fd = 0;
 int sock_fd = 0;
 int client_fd = 0;
 
+singly_linked_list_t* list = NULL;
+pthread_mutex_t file_mutex;
+
 void signal_handler(int s)
 {
     if (s == SIGINT || s == SIGTERM)
     {
         syslog(LOG_DEBUG, "Caught signal, exiting");
+        // TODO: kill all threads? Destroy List?
         close(client_fd);
         close(sock_fd);
         close(file_fd);
@@ -40,7 +43,7 @@ void signal_handler(int s)
 * 1) Receive the packets from the client, and write them to the file
 * 2) Take all packets written to the file, and send them back to the client
 */
-void handle_client(int client_fd, int file_fd)
+void handle_client(thread_data_t *d)
 {
     char buf[BUFFER_SIZE];
     int bytes_read = 0;
@@ -49,7 +52,9 @@ void handle_client(int client_fd, int file_fd)
 
     while(true)
     {
-        bytes_read = recv(client_fd, buf, BUFFER_SIZE - 1, 0);
+        pthread_mutex_lock(d->file_mutex);
+        bytes_read = recv(d->client_fd, buf, BUFFER_SIZE - 1, 0);
+        pthread_mutex_unlock(d->file_mutex);
         if (bytes_read < 0)
         {
             syslog(LOG_ERR, "[handle_client] recv error - %s", strerror(errno));
@@ -63,7 +68,9 @@ void handle_client(int client_fd, int file_fd)
 
         buf[bytes_read] = '\0';
 
-        bytes_written = write(file_fd, buf, bytes_read);
+        pthread_mutex_lock(d->file_mutex);
+        bytes_written = write(d->file_fd, buf, bytes_read);
+        pthread_mutex_unlock(d->file_mutex);
         if (bytes_written < 0)
         {
             syslog(LOG_ERR, "[handle_client] write error - %s", strerror(errno));
@@ -81,14 +88,14 @@ void handle_client(int client_fd, int file_fd)
         }
 
         // Packet received - sending it back!
-        rc = lseek(file_fd, 0, SEEK_SET);
+        rc = lseek(d->file_fd, 0, SEEK_SET);
         if (rc == -1)
         {
             syslog(LOG_ERR, "[handle_client] lseek error - %s", strerror(errno));
             return;
         }
 
-        while((bytes_read = read(file_fd, buf, BUFFER_SIZE)) != 0)
+        while((bytes_read = read(d->file_fd, buf, BUFFER_SIZE)) != 0)
         {
             if (bytes_read == -1)
             {
@@ -96,7 +103,7 @@ void handle_client(int client_fd, int file_fd)
                 return;
             }
             
-            bytes_written = send(client_fd, buf, bytes_read, 0);
+            bytes_written = send(d->client_fd, buf, bytes_read, 0);
             if (bytes_written == -1)
             {
                 syslog(LOG_ERR, "[handle_client] send error - %s", strerror(errno));
@@ -111,6 +118,39 @@ void handle_client(int client_fd, int file_fd)
     }
 }
 
+void *client_thread(void *t)
+{
+    thread_data_t *data = (thread_data_t *)t;
+
+    syslog(LOG_INFO, "Accepted connection from %s", (data->client_ip != NULL) ? data->client_ip : "an unknown IP");
+
+    handle_client(data);
+
+    syslog(LOG_INFO, "Closed connection from %s", (data->client_ip != NULL) ? data->client_ip : "an unknown IP");
+    close(data->client_fd);
+    data->thread_complete_success = true;
+
+    return t;
+}
+
+void join_completed_threads()
+{
+    node_t *ptr = sll_front(list);
+    thread_data_t *data = NULL;
+
+    while(ptr != NULL)
+    {
+        data = (thread_data_t *)(ptr->value);
+        if (data->thread_complete_success)
+        {
+            pthread_join(data->tid, NULL);
+            sll_remove_node(list, ptr->value);
+            free(data);
+        }
+        ptr = ptr->next;
+    }
+}
+
 int main(int argc, char **argv)
 {
     int daemon_mode = 0;
@@ -121,9 +161,9 @@ int main(int argc, char **argv)
     struct addrinfo *res = NULL;
     struct sockaddr_in client_addr = {0};
     socklen_t client_addr_len = sizeof(client_addr);
-    char *client_ip = NULL;
     struct sigaction a = {0};
     pid_t pid;
+    thread_data_t *thread_data = NULL;
 
     openlog(NULL, 0, LOG_USER);
 
@@ -161,6 +201,20 @@ int main(int argc, char **argv)
         return -1;
     }
 
+    // Set up lists, etc.
+    if ((rc = pthread_mutex_init(&file_mutex, NULL)) != 0)
+    {
+        syslog(LOG_ERR, "Failed to initialize file mutex");
+        goto close_file;
+    }
+
+    if ((list = sll_init_list()) == NULL)
+    {
+        syslog(LOG_ERR, "Failed to create linked list");
+        rc = -1;
+        goto destroy_file_mutex;
+    }
+
     // Getting address info
     hints.ai_flags = AI_PASSIVE;
     hints.ai_family = AF_INET;
@@ -170,7 +224,7 @@ int main(int argc, char **argv)
     if (rc != 0)
     {
         syslog(LOG_ERR, "getaddrinfo error - %s", gai_strerror(rc));
-        goto close_file;
+        goto free_list;
     }
 
     // Open socket
@@ -224,7 +278,7 @@ int main(int argc, char **argv)
     // We don't need res anymore
     freeaddrinfo(res);
 
-    // Server loop
+    // Server loop - accept connection and spawn thread
     while (true)
     {
         client_fd = accept(sock_fd, (struct sockaddr *)&client_addr, &client_addr_len);
@@ -234,19 +288,40 @@ int main(int argc, char **argv)
             continue;
         }
 
-        client_ip = inet_ntoa(client_addr.sin_addr);
-        syslog(LOG_INFO, "Accepted connection from %s", (client_ip != NULL) ? client_ip : "an unknown IP");
-
-        handle_client(client_fd, file_fd);
+        thread_data = (thread_data_t *)malloc(sizeof(thread_data_t));
+        if (!thread_data)
+        {
+            syslog(LOG_ERR, "Failed to malloc thread_data_t");
+            close(client_fd);
+            continue;
+        }
         
-        syslog(LOG_INFO, "Closed connection from %s", (client_ip != NULL) ? client_ip : "an unknown IP");
-        close(client_fd);
+        thread_data->client_ip = inet_ntoa(client_addr.sin_addr);
+        thread_data->file_fd = file_fd;
+        thread_data->client_fd = client_fd;
+        thread_data->file_mutex = &file_mutex;
+        thread_data->thread_complete_success = false;
+
+        if ((rc = pthread_create(&thread_data->tid, NULL, client_thread, thread_data)) != 0)
+        {
+            syslog(LOG_ERR, "Failed to spawn thread for new connection %s", thread_data->client_ip);
+            free(thread_data);
+            close(client_fd);
+            continue;
+        }
+
+        sll_insert_node(list, (void *)thread_data);
+        join_completed_threads();
     }
 
 close_sock:
     close(sock_fd);
 free_addr_info:
     if (res) freeaddrinfo(res);
+free_list:
+    sll_destroy_list(list);
+destroy_file_mutex:
+    pthread_mutex_destroy(&file_mutex);
 close_file:
     close(file_fd);
     remove(FILE);
