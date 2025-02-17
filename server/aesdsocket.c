@@ -11,6 +11,7 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <stdbool.h>
+#include <time.h>
 
 #include "aesdsocket.h"
 #include "singly_linked_list.h"
@@ -37,6 +38,58 @@ void signal_handler(int s)
         exit(0);
     }
 }
+
+void timer_handler(union sigval sv) {
+    (void)sv;  // Unused parameter
+
+    time_t now;
+    struct tm *tm_info;
+    char timestamp[100];
+
+    time(&now);
+    tm_info = localtime(&now);
+    int size = strftime(timestamp, sizeof(timestamp),
+                        "timestamp:%a, %d %b %Y %H:%M:%S %z\n", tm_info);
+
+    pthread_mutex_lock(&file_mutex);
+    write(file_fd, timestamp, size);
+    pthread_mutex_unlock(&file_mutex);
+}
+
+int init_timer(int firstRun, int interval) {
+    struct sigevent sev;
+    timer_t timerId;
+    struct itimerspec ts;
+
+    sev.sigev_notify = SIGEV_THREAD;
+    sev.sigev_notify_function = timer_handler;
+    sev.sigev_value.sival_ptr = NULL;
+
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    sev.sigev_notify_attributes = &attr;
+
+    if (timer_create(CLOCK_REALTIME, &sev, &timerId) != 0) {
+        syslog(LOG_ERR, "Failed to create timer");
+        return -1;
+    }
+
+    pthread_attr_destroy(&attr);
+
+    ts.it_value.tv_sec = firstRun;
+    ts.it_value.tv_nsec = 0;
+    ts.it_interval.tv_sec = interval;
+    ts.it_interval.tv_nsec = 0;
+
+    if (timer_settime(timerId, 0, &ts, NULL) != 0) {
+        syslog(LOG_ERR, "Failed to start the timer");
+        return -1;
+    }
+
+    return 0;
+}
+
 
 /*
 * This function will handle the communication between the client. It will:
@@ -201,7 +254,7 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    // Set up lists, etc.
+    // Set up lists, mutex, etc.
     if ((rc = pthread_mutex_init(&file_mutex, NULL)) != 0)
     {
         syslog(LOG_ERR, "Failed to initialize file mutex");
@@ -265,6 +318,12 @@ int main(int argc, char **argv)
             // Parent process
             return 0;
         }
+    }
+
+    // Set up timer
+    if ((rc = init_timer(1, 10)) != 0)
+    {
+        goto close_sock;
     }
 
     // Listen for incoming connections
