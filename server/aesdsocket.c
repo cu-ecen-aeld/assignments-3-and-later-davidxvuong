@@ -30,11 +30,11 @@ void signal_handler(int s)
     if (s == SIGINT || s == SIGTERM)
     {
         syslog(LOG_DEBUG, "Caught signal, exiting");
-        // TODO: kill all threads? Destroy List?
         close(client_fd);
         close(sock_fd);
         close(file_fd);
         remove(FILE);
+        sll_destroy_list(list);
         exit(0);
     }
 }
