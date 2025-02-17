@@ -22,8 +22,8 @@ int sll_remove_node(singly_linked_list_t *list, void *data);
 void *sll_remove_top(singly_linked_list_t *list);
 void sll_reverse_list(singly_linked_list_t *list);
 int sll_size(singly_linked_list_t *list);
-void *sll_front(singly_linked_list_t *list);
-void *sll_back(singly_linked_list_t *list);
+node_t *sll_front(singly_linked_list_t *list);
+node_t *sll_back(singly_linked_list_t *list);
 void sll_pretty_print_list(singly_linked_list_t *list);
 
 #endif

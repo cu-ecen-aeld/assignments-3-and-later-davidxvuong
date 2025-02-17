@@ -26,7 +26,7 @@ void sll_destroy_list(singly_linked_list_t *list) {
 
     while (ptr != NULL) {
         next_ptr = ptr->next;
-        free(ptr->value);
+        if (ptr->value) free(ptr->value);
         free(ptr);
         ptr = next_ptr;
     }
@@ -98,7 +98,9 @@ int sll_remove_node(singly_linked_list_t *list, void *data) {
         }
     }
 
-    list->tail = prev_ptr;
+    if (list->tail == free_ptr) {
+        list->tail = prev_ptr;  // Update tail correctly
+    }
 
     return count;
 }
@@ -150,16 +152,16 @@ int sll_size(singly_linked_list_t *list) {
     return (list->size);
 }
 
-void *sll_front(singly_linked_list_t *list) {
+node_t *sll_front(singly_linked_list_t *list) {
     if (!list) return NULL;
     if (!list->head) return NULL;
-    return (list->head->value);
+    return (list->head);
 }
 
-void *sll_back(singly_linked_list_t *list) {
+node_t *sll_back(singly_linked_list_t *list) {
     if (!list) return NULL;
     if (!list->tail) return NULL;
-    return (list->tail->value);
+    return (list->tail);
 }
 
 void sll_pretty_print_list(singly_linked_list_t *list) {

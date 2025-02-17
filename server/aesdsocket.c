@@ -188,7 +188,7 @@ void *client_thread(void *t)
 
 void join_completed_threads()
 {
-    node_t *ptr = sll_front(list);
+    node_t *ptr = (node_t *)sll_front(list);
     thread_data_t *data = NULL;
 
     while(ptr != NULL)
@@ -196,9 +196,10 @@ void join_completed_threads()
         data = (thread_data_t *)(ptr->value);
         if (data->thread_complete_success)
         {
-            pthread_join(data->tid, NULL);
+            node_t *next = ptr->next;  // Save next node
             sll_remove_node(list, ptr->value);
             free(data);
+            ptr = next;  // Move forward
         }
         ptr = ptr->next;
     }
