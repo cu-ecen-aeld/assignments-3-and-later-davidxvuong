@@ -1,6 +1,6 @@
 CC ?= gcc
-CFLAGS = -g -Wall
-TARGET = aesdsocket
+CFLAGS ?= -g -Wall
+TARGET ?= aesdsocket
 HEADER_FILES = aesdsocket.h singly_linked_list.h
 SOURCE_FILES = singly_linked_list.c
 
