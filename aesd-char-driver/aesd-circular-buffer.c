@@ -84,9 +84,16 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
 * Any necessary locking must be handled by the caller
 * Any memory referenced in @param add_entry must be allocated by and/or must have a lifetime managed by the caller.
 */
-void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
+char *aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
 {
+    char *free_entry = NULL;
+
     if (!buffer || !add_entry) return;
+
+    if (buffer->full)
+    {
+        free_entry = buffer->entry[buffer->in_offs].buffptr;
+    }
 
     buffer->entry[buffer->in_offs].buffptr = add_entry->buffptr;
     buffer->entry[buffer->in_offs].size = add_entry->size;
@@ -106,6 +113,8 @@ void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const s
         // which means we are now full
         buffer->full = true;
     }
+
+    return free_entry;
 }
 
 /**
@@ -114,4 +123,15 @@ void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const s
 void aesd_circular_buffer_init(struct aesd_circular_buffer *buffer)
 {
     memset(buffer,0,sizeof(struct aesd_circular_buffer));
+}
+
+void aesd_circular_buffer_deinit(struct aesd_circular_buffer *buffer)
+{
+    uint8_t index;
+    struct aesd_buffer_entry *entry = NULL;
+
+    AESD_CIRCULAR_BUFFER_FOREACH(entry, buffer, index)
+    {
+        kfree(entry->buffptr);
+    }
 }
