@@ -10,6 +10,7 @@
 
 #ifdef __KERNEL__
 #include <linux/string.h>
+#include <linux/slab.h>
 #else
 #include <string.h>
 #include <stdio.h>
@@ -88,11 +89,11 @@ char *aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const 
 {
     char *free_entry = NULL;
 
-    if (!buffer || !add_entry) return;
+    if (!buffer || !add_entry) return NULL;
 
     if (buffer->full)
     {
-        free_entry = buffer->entry[buffer->in_offs].buffptr;
+        free_entry = (char *)buffer->entry[buffer->in_offs].buffptr;
     }
 
     buffer->entry[buffer->in_offs].buffptr = add_entry->buffptr;

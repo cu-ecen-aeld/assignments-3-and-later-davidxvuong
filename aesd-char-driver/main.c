@@ -66,7 +66,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     if (!dev)
         return -EFAULT;
 
-    entry = aesd_circular_buffer_find_entry_offset_for_fpos(dev->buf, (size_t)(*f_pos), &entry_offset)
+    entry = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->buf, (size_t)(*f_pos), &entry_offset);
     if (entry == NULL)
     {
         return -EFAULT;
@@ -75,7 +75,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     n_bytes_read = entry->size - entry_offset;
     n_bytes_read = (count > n_bytes_read) ? n_bytes_read : count;
 
-    if(copy_to_user(buf, entry->bufptr + offset, n_bytes_read))
+    if(copy_to_user(buf, entry->buffptr + entry_offset, n_bytes_read))
     {
         return -EFAULT;
     }
@@ -89,7 +89,6 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                 loff_t *f_pos)
 {
     ssize_t retval = -ENOMEM;
-    size_t n_bytes_write = 0;
     struct aesd_dev *dev = NULL;
     struct aesd_buffer_entry *entry = NULL;
     char *free_entry = NULL;
@@ -117,7 +116,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     if (!entry->buffptr)
         return -ENOMEM;
 
-    if (copy_from_user(entry->buffptr + entry->size, buf, count))
+    if (copy_from_user((char *)(entry->buffptr + entry->size), buf, count))
         return -EFAULT;
 
     retval = count;
@@ -127,7 +126,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     {
         if (entry->buffptr[i] == '\n')
         {
-            free_entry = aesd_circular_buffer_add_entry(dev->buffer, entry);
+            free_entry = aesd_circular_buffer_add_entry(&dev->buf, entry);
             if (free_entry) kfree(free_entry);
 
             entry->size = 0;
@@ -174,8 +173,8 @@ int aesd_init_module(void)
     }
     memset(&aesd_device,0,sizeof(struct aesd_dev));
 
-    mutex_init(&aesd_device->lock);
-    aesd_circular_buffer_init(&aesd_device->buf);
+    mutex_init(&aesd_device.lock);
+    aesd_circular_buffer_init(&aesd_device.buf);
 
     result = aesd_setup_cdev(&aesd_device);
 
@@ -191,7 +190,7 @@ void aesd_cleanup_module(void)
     dev_t devno = MKDEV(aesd_major, aesd_minor);
 
     cdev_del(&aesd_device.cdev);
-    aesd_circular_buffer_deinit(&aesd_device->buf);
+    aesd_circular_buffer_deinit(&aesd_device.buf);
 
     unregister_chrdev_region(devno, 1);
 }
