@@ -37,7 +37,7 @@ struct aesd_dev
     struct aesd_circular_buffer buf;            /* Circular buffer structure  */
     struct aesd_buffer_entry entry;             /* Current buffer entry       */
     struct cdev cdev;                           /* Char device structure      */
-    struct mutex lock;                          /* Mutex for buf              */
+    struct mutex m;                             /* Mutex for buf              */
 };
 
 

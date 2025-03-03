@@ -53,6 +53,7 @@ int aesd_release(struct inode *inode, struct file *filp)
 ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
                 loff_t *f_pos)
 {
+    ssize_t retval = 0;
     ssize_t n_bytes_read = 0;
     struct aesd_dev *dev = NULL;
     struct aesd_buffer_entry *entry = NULL;
@@ -71,10 +72,16 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
         return -EFAULT;
     }
 
+    if (mutex_lock_interruptible(&dev->m) != 0)
+    {
+        return -ERESTARTSYS;
+    }
+
     entry = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->buf, (size_t)(*f_pos), &entry_offset);
     if (entry == NULL)
     {
-        return 0;
+        retval = 0;
+        goto done;
     }
 
     n_bytes_read = entry->size - entry_offset;
@@ -82,12 +89,15 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 
     if(copy_to_user(buf, entry->buffptr + entry_offset, n_bytes_read))
     {
-        return -EFAULT;
+        retval = -EFAULT;
+        goto done;
     }
 
     *f_pos += n_bytes_read;
-
-    return n_bytes_read;
+    retval = n_bytes_read;
+done:
+    mutex_unlock(&dev->m);
+    return retval;
 }
 
 ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
@@ -105,7 +115,14 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 
     dev = (struct aesd_dev *)(filp->private_data);
     if (!dev)
+    {
         return -EFAULT;
+    }
+
+    if (mutex_lock_interruptible(&dev->m) != 0)
+    {
+        return -ERESTARTSYS;
+    }
 
     entry = &dev->entry;
 
@@ -119,10 +136,16 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     }
 
     if (!entry->buffptr)
-        return -ENOMEM;
+    {
+        retval = -ENOMEM;
+        goto done;
+    }
 
     if (copy_from_user((char *)(entry->buffptr + entry->size), buf, count))
-        return -EFAULT;
+    {
+        retval = -EFAULT;
+        goto done;
+    }
 
     retval = count;
     entry->size += count;
@@ -139,6 +162,8 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         }
     }
 
+done:
+    mutex_unlock(&dev->m);
     return retval;
 }
 struct file_operations aesd_fops = {
@@ -178,7 +203,7 @@ int aesd_init_module(void)
     }
     memset(&aesd_device,0,sizeof(struct aesd_dev));
 
-    mutex_init(&aesd_device.lock);
+    mutex_init(&aesd_device.m);
     aesd_circular_buffer_init(&aesd_device.buf);
 
     result = aesd_setup_cdev(&aesd_device);
