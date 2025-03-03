@@ -60,16 +60,21 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 
     PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
 
-    if (!filp || !buf || !f_pos) return -EFAULT;
+    if (!filp || !buf || !f_pos)
+    {
+        return -EFAULT;
+    }
 
     dev = (struct aesd_dev *)(filp->private_data);
     if (!dev)
+    {
         return -EFAULT;
+    }
 
     entry = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->buf, (size_t)(*f_pos), &entry_offset);
     if (entry == NULL)
     {
-        return -EFAULT;
+        return 0;
     }
 
     n_bytes_read = entry->size - entry_offset;

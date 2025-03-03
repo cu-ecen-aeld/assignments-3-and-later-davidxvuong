@@ -107,6 +107,8 @@ char *aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const 
     {
         // buffer is full
         buffer->out_offs++;
+        if (buffer->out_offs >= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED)
+            buffer->out_offs = 0;
     }
     else if(buffer->in_offs == buffer->out_offs)
     {
@@ -133,6 +135,10 @@ void aesd_circular_buffer_deinit(struct aesd_circular_buffer *buffer)
 
     AESD_CIRCULAR_BUFFER_FOREACH(entry, buffer, index)
     {
+#ifdef __KERNEL__
         kfree(entry->buffptr);
+#else
+        free((void*)entry->buffptr);
+#endif
     }
 }
