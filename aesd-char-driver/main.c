@@ -18,6 +18,7 @@
 #include <linux/cdev.h>
 #include <linux/fs.h> // file_operations
 #include <linux/uaccess.h> // copy_to_user and copy_from_user
+#include <linux/slab.h> // For kmalloc, krealloc
 #include "aesdchar.h"
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
@@ -133,7 +134,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     }
     else
     {
-        entry->buffptr = krealloc(entry->buffptr, count + entry->size, GFP_KERNEL);
+        entry->buffptr = (char *)krealloc(entry->buffptr, count + entry->size, GFP_KERNEL);
     }
 
     if (!entry->buffptr)
