@@ -33,12 +33,15 @@ void signal_handler(int s)
         close(client_fd);
         close(sock_fd);
         close(file_fd);
+#ifndef USE_AESD_CHAR_DEVICE
         remove(FILE);
+#endif
         sll_destroy_list(list);
         exit(0);
     }
 }
 
+#ifndef USE_AESD_CHAR_DEVICE
 void timer_handler(union sigval sv) {
     (void)sv;  // Unused parameter
 
@@ -89,7 +92,7 @@ int init_timer(int firstRun, int interval) {
 
     return 0;
 }
-
+#endif
 
 /*
 * This function will handle the communication between the client. It will:
@@ -101,7 +104,6 @@ void handle_client(thread_data_t *d)
     char buf[BUFFER_SIZE];
     int bytes_read = 0;
     int bytes_written = 0;
-    int rc = 0;
 
     while(true)
     {
@@ -140,16 +142,18 @@ void handle_client(thread_data_t *d)
             continue;
         }
 
+#ifndef USE_AESD_CHAR_DEVICE
         // Packet received - sending it back!
-        rc = lseek(d->file_fd, 0, SEEK_SET);
-        if (rc == -1)
+        if (lseek(d->file_fd, 0, SEEK_SET) == -1)
         {
             syslog(LOG_ERR, "[handle_client] lseek error - %s", strerror(errno));
             return;
         }
+#endif
 
         while((bytes_read = read(d->file_fd, buf, BUFFER_SIZE)) != 0)
         {
+            syslog(LOG_INFO, "Read from driver: %s", buf);
             if (bytes_read == -1)
             {
                 syslog(LOG_ERR, "[handle client] read error - %s", strerror(errno));
@@ -321,11 +325,13 @@ int main(int argc, char **argv)
         }
     }
 
+#ifndef USE_AESD_CHAR_DEVICE
     // Set up timer
     if ((rc = init_timer(1, 10)) != 0)
     {
         goto close_sock;
     }
+#endif
 
     // Listen for incoming connections
     rc = listen(sock_fd, BACKLOG);
@@ -384,6 +390,8 @@ destroy_file_mutex:
     pthread_mutex_destroy(&file_mutex);
 close_file:
     close(file_fd);
+#ifndef USE_AESD_CHAR_DEVICE
     remove(FILE);
+#endif
     return rc;
 }
