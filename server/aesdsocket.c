@@ -36,7 +36,22 @@ void signal_handler(int s)
 #ifndef USE_AESD_CHAR_DEVICE
         remove(FILE);
 #endif
-        sll_destroy_list(list);
+        node_t *ptr = (node_t *)sll_front(list);
+        while (ptr != NULL)
+        {
+            thread_data_t *data = (thread_data_t *)(ptr->value);
+            if (data)
+            {
+                pthread_join(data->tid, NULL); // Wait for the thread to finish
+                if (data->client_fd > 0) close(data->client_fd); // Now safe to close
+                if (data->file_fd > 0) close(data->file_fd);
+                free(data);
+            }
+            ptr = ptr->next;
+        }
+
+        sll_destroy_list(list); // Free the linked list itself
+        pthread_mutex_destroy(&file_mutex); // Clean up the mutex
         exit(0);
     }
 }
@@ -179,11 +194,22 @@ void *client_thread(void *t)
 {
     thread_data_t *data = (thread_data_t *)t;
 
+    // Open file for storing packet data
+    data->file_fd = open(FILE, O_CREAT | O_RDWR | O_APPEND, 0644);
+    if (data->file_fd < 0)
+    {
+        syslog(LOG_ERR, "Failed to open file %s - %s", FILE, strerror(errno));
+        goto done;
+    }
+
     syslog(LOG_INFO, "Accepted connection from %s", (data->client_ip != NULL) ? data->client_ip : "an unknown IP");
 
     handle_client(data);
 
     syslog(LOG_INFO, "Closed connection from %s", (data->client_ip != NULL) ? data->client_ip : "an unknown IP");
+
+    close(data->file_fd);
+done:
     close(data->client_fd);
     data->thread_complete_success = true;
 
@@ -193,6 +219,7 @@ void *client_thread(void *t)
 void join_completed_threads()
 {
     node_t *ptr = (node_t *)sll_front(list);
+    node_t *next = NULL;
     thread_data_t *data = NULL;
 
     while(ptr != NULL)
@@ -200,8 +227,11 @@ void join_completed_threads()
         data = (thread_data_t *)(ptr->value);
         if (data->thread_complete_success)
         {
-            node_t *next = ptr->next;  // Save next node
+            pthread_join(data->tid, NULL);
+            next = ptr->next;  // Save next node
             sll_remove_node(list, ptr->value);
+            if (data->client_fd > 0) close(data->client_fd);
+            if (data->file_fd > 0) close(data->file_fd);
             free(data);
             ptr = next;  // Move forward
         }
@@ -248,14 +278,6 @@ int main(int argc, char **argv)
     if (sigaction(SIGINT, &a, NULL) != 0)
     {
         syslog(LOG_ERR, "Failed to register signal handler for SIGINT - %s", strerror(errno));
-        return -1;
-    }
-
-    // Open file for storing packet data
-    file_fd = open(FILE, O_CREAT | O_RDWR | O_APPEND, 0644);
-    if (file_fd < 0)
-    {
-        syslog(LOG_ERR, "Failed to open file %s - %s", FILE, strerror(errno));
         return -1;
     }
 
@@ -363,7 +385,7 @@ int main(int argc, char **argv)
         }
         
         thread_data->client_ip = inet_ntoa(client_addr.sin_addr);
-        thread_data->file_fd = file_fd;
+        thread_data->file_fd = 0;
         thread_data->client_fd = client_fd;
         thread_data->file_mutex = &file_mutex;
         thread_data->thread_complete_success = false;
