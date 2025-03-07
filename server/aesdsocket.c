@@ -353,6 +353,8 @@ int main(int argc, char **argv)
     {
         goto close_sock;
     }
+#else
+    syslog(LOG_INFO, "USE_AESD_CHAR_DEVICE is set");
 #endif
 
     // Listen for incoming connections
