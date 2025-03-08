@@ -23,7 +23,7 @@ int sock_fd = 0;
 int client_fd = 0;
 
 singly_linked_list_t* list = NULL;
-pthread_mutex_t file_mutex;
+// pthread_mutex_t file_mutex;
 
 void signal_handler(int s)
 {
@@ -51,7 +51,7 @@ void signal_handler(int s)
         }
 
         sll_destroy_list(list); // Free the linked list itself
-        pthread_mutex_destroy(&file_mutex); // Clean up the mutex
+        // pthread_mutex_destroy(&file_mutex); // Clean up the mutex
         exit(0);
     }
 }
@@ -69,9 +69,9 @@ void timer_handler(union sigval sv) {
     int size = strftime(timestamp, sizeof(timestamp),
                         "timestamp:%a, %d %b %Y %H:%M:%S %z\n", tm_info);
 
-    pthread_mutex_lock(&file_mutex);
+    // pthread_mutex_lock(&file_mutex);
     write(file_fd, timestamp, size);
-    pthread_mutex_unlock(&file_mutex);
+    // pthread_mutex_unlock(&file_mutex);
 }
 
 int init_timer(int firstRun, int interval) {
@@ -119,12 +119,14 @@ void handle_client(thread_data_t *d)
     char buf[BUFFER_SIZE];
     int bytes_read = 0;
     int bytes_written = 0;
-
+    syslog(LOG_INFO, "DEBUG: file_fd: %d", d->file_fd);
+    syslog(LOG_INFO, "DEBUG: client_fd: %d", d->client_fd);
     while(true)
     {
-        pthread_mutex_lock(d->file_mutex);
+        syslog(LOG_INFO, "DEBUG: receive data from client");
+        // pthread_mutex_lock(d->file_mutex);
         bytes_read = recv(d->client_fd, buf, BUFFER_SIZE - 1, 0);
-        pthread_mutex_unlock(d->file_mutex);
+        // pthread_mutex_unlock(d->file_mutex);
         if (bytes_read < 0)
         {
             syslog(LOG_ERR, "[handle_client] recv error - %s", strerror(errno));
@@ -137,10 +139,10 @@ void handle_client(thread_data_t *d)
         }
 
         buf[bytes_read] = '\0';
-
-        pthread_mutex_lock(d->file_mutex);
+        syslog(LOG_INFO, "DEBUG: write data received to file descriptor %d", d->file_fd);
+        // pthread_mutex_lock(d->file_mutex);
         bytes_written = write(d->file_fd, buf, bytes_read);
-        pthread_mutex_unlock(d->file_mutex);
+        // pthread_mutex_unlock(d->file_mutex);
         if (bytes_written < 0)
         {
             syslog(LOG_ERR, "[handle_client] write error - %s", strerror(errno));
@@ -166,6 +168,7 @@ void handle_client(thread_data_t *d)
         }
 #endif
 
+        syslog(LOG_INFO, "DEBUG: newline character found, sending everything back. file desc: %d", d->file_fd);
         while((bytes_read = read(d->file_fd, buf, BUFFER_SIZE)) != 0)
         {
             syslog(LOG_INFO, "Read from driver: %s", buf);
@@ -174,7 +177,7 @@ void handle_client(thread_data_t *d)
                 syslog(LOG_ERR, "[handle client] read error - %s", strerror(errno));
                 return;
             }
-            
+            syslog(LOG_INFO, "DEBUG: sending back client descriptor %d", d->client_fd);
             bytes_written = send(d->client_fd, buf, bytes_read, 0);
             if (bytes_written == -1)
             {
@@ -186,7 +189,9 @@ void handle_client(thread_data_t *d)
                 syslog(LOG_ERR, "[handle_client] send error - bytes mismatch. Read %d bytes, but wrote %d bytes", bytes_read, bytes_written);
                 return;
             }
+            syslog(LOG_INFO, "DEBUG: done sending %s", buf);
         }
+        syslog(LOG_INFO, "DEBUG: done sending everything back");
     }
 }
 
@@ -210,7 +215,6 @@ void *client_thread(void *t)
 
     close(data->file_fd);
 done:
-    close(data->client_fd);
     data->thread_complete_success = true;
 
     return t;
@@ -230,8 +234,8 @@ void join_completed_threads()
             pthread_join(data->tid, NULL);
             next = ptr->next;  // Save next node
             sll_remove_node(list, ptr->value);
-            if (data->client_fd > 0) close(data->client_fd);
-            if (data->file_fd > 0) close(data->file_fd);
+            // if (data->client_fd > 0) close(data->client_fd);
+            // if (data->file_fd > 0) close(data->file_fd);
             free(data);
             ptr = next;  // Move forward
         }
@@ -282,11 +286,11 @@ int main(int argc, char **argv)
     }
 
     // Set up lists, mutex, etc.
-    if ((rc = pthread_mutex_init(&file_mutex, NULL)) != 0)
-    {
-        syslog(LOG_ERR, "Failed to initialize file mutex");
-        goto close_file;
-    }
+    // if ((rc = pthread_mutex_init(&file_mutex, NULL)) != 0)
+    // {
+    //     syslog(LOG_ERR, "Failed to initialize file mutex");
+    //     goto close_file;
+    // }
 
     if ((list = sll_init_list()) == NULL)
     {
@@ -389,7 +393,7 @@ int main(int argc, char **argv)
         thread_data->client_ip = inet_ntoa(client_addr.sin_addr);
         thread_data->file_fd = 0;
         thread_data->client_fd = client_fd;
-        thread_data->file_mutex = &file_mutex;
+        // thread_data->file_mutex = &file_mutex;
         thread_data->thread_complete_success = false;
 
         if ((rc = pthread_create(&thread_data->tid, NULL, client_thread, thread_data)) != 0)
@@ -411,7 +415,7 @@ free_addr_info:
 free_list:
     sll_destroy_list(list);
 destroy_file_mutex:
-    pthread_mutex_destroy(&file_mutex);
+    // pthread_mutex_destroy(&file_mutex);
 close_file:
     close(file_fd);
 #ifndef USE_AESD_CHAR_DEVICE
