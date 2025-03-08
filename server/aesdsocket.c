@@ -119,9 +119,11 @@ void handle_client(thread_data_t *d)
     char buf[BUFFER_SIZE];
     int bytes_read = 0;
     int bytes_written = 0;
-
+    syslog(LOG_INFO, "DEBUG: file_fd: %d", d->file_fd);
+    syslog(LOG_INFO, "DEBUG: client_fd: %d", d->client_fd);
     while(true)
     {
+        syslog(LOG_INFO, "DEBUG: receive data from client");
         pthread_mutex_lock(d->file_mutex);
         bytes_read = recv(d->client_fd, buf, BUFFER_SIZE - 1, 0);
         pthread_mutex_unlock(d->file_mutex);
@@ -137,7 +139,7 @@ void handle_client(thread_data_t *d)
         }
 
         buf[bytes_read] = '\0';
-
+        syslog(LOG_INFO, "DEBUG: write data received to file descriptor %d", d->file_fd);
         pthread_mutex_lock(d->file_mutex);
         bytes_written = write(d->file_fd, buf, bytes_read);
         pthread_mutex_unlock(d->file_mutex);
@@ -166,6 +168,7 @@ void handle_client(thread_data_t *d)
         }
 #endif
 
+        syslog(LOG_INFO, "DEBUG: newline character found, sending everything back. file desc: %d", d->file_fd);
         while((bytes_read = read(d->file_fd, buf, BUFFER_SIZE)) != 0)
         {
             syslog(LOG_INFO, "Read from driver: %s", buf);
@@ -174,7 +177,7 @@ void handle_client(thread_data_t *d)
                 syslog(LOG_ERR, "[handle client] read error - %s", strerror(errno));
                 return;
             }
-            
+            syslog(LOG_INFO, "DEBUG: sending back client descriptor %d", d->client_fd);
             bytes_written = send(d->client_fd, buf, bytes_read, 0);
             if (bytes_written == -1)
             {
@@ -186,7 +189,9 @@ void handle_client(thread_data_t *d)
                 syslog(LOG_ERR, "[handle_client] send error - bytes mismatch. Read %d bytes, but wrote %d bytes", bytes_read, bytes_written);
                 return;
             }
+            syslog(LOG_INFO, "DEBUG: done sending %s", buf);
         }
+        syslog(LOG_INFO, "DEBUG: done sending everything back");
     }
 }
 
@@ -210,7 +215,6 @@ void *client_thread(void *t)
 
     close(data->file_fd);
 done:
-    close(data->client_fd);
     data->thread_complete_success = true;
 
     return t;
@@ -230,8 +234,8 @@ void join_completed_threads()
             pthread_join(data->tid, NULL);
             next = ptr->next;  // Save next node
             sll_remove_node(list, ptr->value);
-            if (data->client_fd > 0) close(data->client_fd);
-            if (data->file_fd > 0) close(data->file_fd);
+            // if (data->client_fd > 0) close(data->client_fd);
+            // if (data->file_fd > 0) close(data->file_fd);
             free(data);
             ptr = next;  // Move forward
         }
