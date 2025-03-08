@@ -15,7 +15,7 @@
 #endif
 
 typedef struct {
-    pthread_mutex_t *file_mutex;
+    // pthread_mutex_t *file_mutex;
     int file_fd;
     int client_fd;
     char *client_ip;
