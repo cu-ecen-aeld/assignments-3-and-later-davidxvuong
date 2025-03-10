@@ -164,16 +164,53 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         }
     }
 
+    *f_pos += retval;
 done:
     mutex_unlock(&dev->m);
     return retval;
 }
+
+loff_t aesd_llseek(struct file *filp, loff_t offset, int whence)
+{
+    struct aesd_dev *dev = NULL;
+    loff_t new_pos;
+
+    if (!filp) return -EFAULT;
+
+    dev = (struct aesd_dev *)(filp->private_data);
+    if (!dev) return -EFAULT;
+
+    switch (whence)
+    {
+        case SEEK_SET:
+            new_pos = offset;
+            break;
+        case SEEK_CUR:
+            new_pos = filp->f_pos + offset;
+            break;
+        case SEEK_END:
+            new_pos = dev->buf.size + offset;
+            break;
+        default:
+            return -EINVAL;
+    }
+
+    if (new_pos < 0 || new_pos > dev->buf.size)
+    {
+        return -EINVAL;
+    }
+
+    filp->f_pos = new_pos;
+    return new_pos;
+}
+
 struct file_operations aesd_fops = {
     .owner =    THIS_MODULE,
     .read =     aesd_read,
     .write =    aesd_write,
     .open =     aesd_open,
     .release =  aesd_release,
+    .llseek =   aesd_llseek,
 };
 
 static int aesd_setup_cdev(struct aesd_dev *dev)
