@@ -28,6 +28,60 @@ MODULE_LICENSE("Dual BSD/GPL");
 
 struct aesd_dev aesd_device;
 
+static long aesd_seekto(struct file *filp, unsigned int str_index, unsigned int str_offset)
+{
+    struct aesd_dev *dev = NULL;
+    struct aesd_circular_buffer *buffer = NULL;
+    struct aesd_buffer_entry *entry = NULL;
+    uint8_t index;
+    size_t retval = 0;
+    size_t pos = 0;
+
+    if (str_index >= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED)
+    {
+        return -EINVAL;
+    }
+
+    dev = (struct aesd_dev *)(filp->private_data);
+    if (!dev) return -EFAULT;
+
+    buffer = &dev->buf;
+
+    if (mutex_lock_interruptible(&dev->m) != 0)
+    {
+        return -ERESTARTSYS;
+    }
+
+    if (buffer->entry[str_index].buffptr == NULL)
+    {
+        retval = -EINVAL;
+        goto done;
+    }
+
+    AESD_CIRCULAR_BUFFER_FOREACH(entry, buffer, index)
+    {
+        if (index == str_index)
+        {
+            if (str_offset >= entry->size)
+            {
+                retval = -EINVAL;
+                goto done;
+            }
+
+            pos += str_offset;
+            break;
+        }
+
+        pos += entry->size;
+    }
+
+    filp->f_pos = pos;
+
+done:
+    mutex_unlock(&dev->m);
+    return retval;
+}
+
 int aesd_open(struct inode *inode, struct file *filp)
 {
     struct aesd_dev *dev = NULL;
@@ -204,6 +258,32 @@ loff_t aesd_llseek(struct file *filp, loff_t offset, int whence)
     return new_pos;
 }
 
+long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
+    struct aesd_seekto seekto;
+    ssize_t retval = 0;
+
+    if (!filp) return -EFAULT;
+
+    switch(cmd)
+    {
+        case AESDCHAR_IOCSEEKTO:
+            if (copy_from_user(&seekto, (const void __user *)arg, sizeof(seekto)) != 0)
+            {
+                retval = -EFAULT;
+            }
+            else
+            {
+                retval = aesd_seekto(filp, seekto.write_cmd, seekto.write_cmd_offset);
+            }
+            break;
+        default:
+            return -EINVAL;
+    }
+
+    return retval;
+}
+
 struct file_operations aesd_fops = {
     .owner =    THIS_MODULE,
     .read =     aesd_read,
@@ -211,6 +291,7 @@ struct file_operations aesd_fops = {
     .open =     aesd_open,
     .release =  aesd_release,
     .llseek =   aesd_llseek,
+    .unlocked_ioctl = aesd_ioctl,
 };
 
 static int aesd_setup_cdev(struct aesd_dev *dev)
