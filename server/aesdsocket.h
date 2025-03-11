@@ -14,8 +14,9 @@
 #define FILE "/var/tmp/aesdsocketdata"
 #endif
 
+#define IO_SEEKTO "AESDCHAR_IOCSEEKTO"
+
 typedef struct {
-    // pthread_mutex_t *file_mutex;
     int file_fd;
     int client_fd;
     char *client_ip;

@@ -36,9 +36,13 @@ static long aesd_seekto(struct file *filp, unsigned int str_index, unsigned int 
     uint8_t index;
     size_t retval = 0;
     size_t pos = 0;
+    uint8_t found = 0;
+
+    PDEBUG("aesd_seekto");
 
     if (str_index >= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED)
     {
+        PDEBUG("str_index (%d) out of max range (10)", str_index);
         return -EINVAL;
     }
 
@@ -49,33 +53,42 @@ static long aesd_seekto(struct file *filp, unsigned int str_index, unsigned int 
 
     if (mutex_lock_interruptible(&dev->m) != 0)
     {
+        PDEBUG("Unable to acquire mutex");
         return -ERESTARTSYS;
     }
 
     if (buffer->entry[str_index].buffptr == NULL)
     {
+        PDEBUG("No data at index %d", str_index);
         retval = -EINVAL;
         goto done;
     }
 
     AESD_CIRCULAR_BUFFER_FOREACH(entry, buffer, index)
     {
+        PDEBUG("Index %d", index);
         if (index == str_index)
         {
             if (str_offset >= entry->size)
             {
+                PDEBUG("str_offset (%d) is greater than the last entry size (%d)", str_offset, entry->size);
                 retval = -EINVAL;
                 goto done;
             }
 
             pos += str_offset;
+            PDEBUG("Found the element we want. Updating pos to %d", pos);
+            found = 1;
             break;
         }
-
+        PDEBUG("Iterating through index %d", index);
         pos += entry->size;
     }
 
-    filp->f_pos = pos;
+    if (found)
+    {
+        filp->f_pos = pos;
+    }
 
 done:
     mutex_unlock(&dev->m);
@@ -218,7 +231,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         }
     }
 
-    *f_pos += retval;
+    // *f_pos += retval;
 done:
     mutex_unlock(&dev->m);
     return retval;
